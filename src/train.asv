@@ -48,8 +48,8 @@ fprintf('步骤3: 构建BP神经网络...\n');
 
 % BP网络参数设置
 input_size = 6;      % 输入层：6个特征
-hidden_size = 15;    % 隐藏层：15个神经元
-output_size = 10;    % 输出层：10维特征向量（用于SVM输入）
+hidden_size = 6;    % 隐藏层：15个神经元
+output_size = 6;    % 输出层：10维特征向量（用于SVM输入）
 
 % 创建BP神经网络
 net = feedforwardnet(hidden_size, 'trainlm');
@@ -83,7 +83,7 @@ fprintf('步骤4: 训练BP网络提取特征...\n');
 % 为了提取特征，我们需要一个"自编码器"式的训练目标
 % 这里采用一个技巧：用PCA降维的结果作为训练目标
 [coeff, score] = pca(X_train_norm);
-target_features = score(:, 1:output_size)';  % 取前10个主成分
+target_features = score(:, 1:output_size)';  % 取前6个主成分,进行"自编码"
 
 % 转置数据以符合Matlab格式（列为样本）
 X_train_net = X_train_norm';
@@ -123,26 +123,28 @@ fprintf('  特征标准化完成\n\n');
 %% ==================== 第六部分：SVM分类器训练 ====================
 fprintf('步骤7: 训练SVM分类器...\n');
 
-% 使用fitcecoc进行多分类（一对一策略）
-% 参数优化
-fprintf('  正在进行超参数优化...\n');
+% % 使用fitcecoc进行多分类（一对一策略）
+% % 参数优化
+% fprintf('  正在进行超参数优化...\n');
+% 
+% % SVM参数设置
+% template = templateSVM(...
+%     'KernelFunction', 'rbf', ...      % RBF核函数
+%     'KernelScale', 'auto', ...         % 自动设置核尺度
+%     'BoxConstraint', 1, ...            % 惩罚因子C=1
+%     'Standardize', false);             % 已经标准化过了
+% 
+% % 训练多分类SVM
+% tic;
+% SVMModel = fitcecoc(features_train_norm, Y_train, ...
+%     'Learners', template, ...
+%     'Coding', 'onevsone', ...          % 一对一编码
+%     'Prior', 'uniform');               % 均匀先验
+% svm_training_time = toc;
+% 
+% fprintf('  SVM训练完成！用时: %.2f 秒\n\n', svm_training_time);
 
-% SVM参数设置
-template = templateSVM(...
-    'KernelFunction', 'rbf', ...      % RBF核函数
-    'KernelScale', 'auto', ...         % 自动设置核尺度
-    'BoxConstraint', 1, ...            % 惩罚因子C=1
-    'Standardize', false);             % 已经标准化过了
 
-% 训练多分类SVM
-tic;
-SVMModel = fitcecoc(features_train_norm, Y_train, ...
-    'Learners', template, ...
-    'Coding', 'onevsone', ...          % 一对一编码
-    'Prior', 'uniform');               % 均匀先验
-svm_training_time = toc;
-
-fprintf('  SVM训练完成！用时: %.2f 秒\n\n', svm_training_time);
 
 %% ==================== 第七部分：模型测试与评估 ====================
 fprintf('步骤8: 模型测试与评估...\n\n');
@@ -163,234 +165,244 @@ fprintf('测试集准确率: %.2f%%\n', test_accuracy);
 fprintf('训练总用时: %.2f 秒\n', training_time + svm_training_time);
 fprintf('========================================\n\n');
 
-%% ==================== 第八部分：详细分类报告 ====================
-fprintf('========================================\n');
-fprintf('详细分类报告（测试集）\n');
-fprintf('========================================\n\n');
 
-% 计算混淆矩阵
-C = confusionmat(Y_test, Y_test_pred);
 
-% 计算每类的精确率、召回率、F1分数
-num_classes = length(unique(Y_test));
-precision = zeros(num_classes, 1);
-recall = zeros(num_classes, 1);
-f1_score = zeros(num_classes, 1);
 
-for i = 1:num_classes
-    TP = C(i, i);
-    FP = sum(C(:, i)) - TP;
-    FN = sum(C(i, :)) - TP;
-    
-    if (TP + FP) > 0
-        precision(i) = TP / (TP + FP);
-    else
-        precision(i) = 0;
-    end
-    
-    if (TP + FN) > 0
-        recall(i) = TP / (TP + FN);
-    else
-        recall(i) = 0;
-    end
-    
-    if (precision(i) + recall(i)) > 0
-        f1_score(i) = 2 * precision(i) * recall(i) / (precision(i) + recall(i));
-    else
-        f1_score(i) = 0;
-    end
-end
 
-% 打印每类的性能指标
-fprintf('故障类型\t样本数\t精确率\t召回率\tF1分数\n');
-fprintf('--------------------------------------------------------\n');
-for i = 1:num_classes
-    num_samples = sum(Y_test == i);
-    fprintf('y%d\t\t%d\t%.3f\t%.3f\t%.3f\n', ...
-        i, num_samples, precision(i), recall(i), f1_score(i));
-end
-fprintf('\n平均性能:\t\t%.3f\t%.3f\t%.3f\n\n', ...
-    mean(precision), mean(recall), mean(f1_score));
 
-%% ==================== 第九部分：可视化结果 ====================
-fprintf('步骤9: 生成可视化结果...\n');
 
-figure('Position', [100, 100, 1400, 900]);
 
-% 1. 训练过程曲线
-subplot(2, 3, 1);
-plot(tr.epoch, tr.perf, 'b-', 'LineWidth', 2);
-xlabel('训练轮次');
-ylabel('均方误差');
-title('BP网络训练过程');
-grid on;
 
-% 2. 混淆矩阵热图
-subplot(2, 3, 2);
-imagesc(C);
-colorbar;
-colormap('jet');
-xlabel('预测类别');
-ylabel('真实类别');
-title('混淆矩阵（测试集）');
-set(gca, 'XTick', 1:num_classes, 'YTick', 1:num_classes);
-% 在格子中显示数值
-for i = 1:num_classes
-    for j = 1:num_classes
-        text(j, i, num2str(C(i,j)), 'HorizontalAlignment', 'center', ...
-             'Color', 'white', 'FontWeight', 'bold');
-    end
-end
 
-% 3. 实际值 vs 预测值对比
-subplot(2, 3, 3);
-plot(1:length(Y_test), Y_test, 'bo-', 'LineWidth', 1.5, 'MarkerSize', 6);
-hold on;
-plot(1:length(Y_test), Y_test_pred, 'rx-', 'LineWidth', 1.5, 'MarkerSize', 8);
-xlabel('测试样本编号');
-ylabel('故障类型');
-title('预测结果对比（测试集）');
-legend('真实值', '预测值', 'Location', 'best');
-grid on;
-ylim([0, num_classes+1]);
 
-% 4. 各类准确率柱状图
-subplot(2, 3, 4);
-class_accuracy = zeros(num_classes, 1);
-for i = 1:num_classes
-    class_idx = find(Y_test == i);
-    if ~isempty(class_idx)
-        class_accuracy(i) = sum(Y_test_pred(class_idx) == i) / length(class_idx) * 100;
-    end
-end
-bar(class_accuracy, 'FaceColor', [0.3, 0.6, 0.8]);
-xlabel('故障类型');
-ylabel('准确率 (%)');
-title('各类故障分类准确率');
-set(gca, 'XTickLabel', arrayfun(@(x) sprintf('y%d', x), 1:num_classes, 'UniformOutput', false));
-grid on;
-ylim([0, 105]);
-
-% 5. 特征空间可视化（PCA降维到2D）
-subplot(2, 3, 5);
-[~, score_test] = pca(features_test_norm);
-gscatter(score_test(:,1), score_test(:,2), Y_test, [], 'o', 8);
-xlabel('第一主成分');
-ylabel('第二主成分');
-title('提取特征的PCA可视化（测试集）');
-legend('Location', 'bestoutside');
-grid on;
-
-% 6. ROC曲线（针对二分类问题，这里展示宏平均）
-subplot(2, 3, 6);
-% 计算每一类的预测概率
-[~, scores] = predict(SVMModel, features_test_norm);
-
-% 绘制多条ROC曲线
-hold on;
-colors = lines(num_classes);
-for i = 1:num_classes
-    % 将多分类转为二分类
-    true_binary = (Y_test == i);
-    pred_scores = scores(:, i);
-    
-    % 计算ROC
-    [X_roc, Y_roc, ~, AUC] = perfcurve(true_binary, pred_scores, true);
-    plot(X_roc, Y_roc, 'Color', colors(i,:), 'LineWidth', 1.5, ...
-         'DisplayName', sprintf('y%d (AUC=%.3f)', i, AUC));
-end
-plot([0, 1], [0, 1], 'k--', 'LineWidth', 1);
-xlabel('假阳率');
-ylabel('真阳率');
-title('ROC曲线（各类故障）');
-legend('Location', 'southeast', 'FontSize', 7);
-grid on;
-
-% 保存图形
-saveas(gcf, 'BP_SVM_Results.png');
-fprintf('  可视化图表已保存: BP_SVM_Results.png\n\n');
-
-%% ==================== 第十部分：错误样本分析 ====================
-fprintf('========================================\n');
-fprintf('错误样本分析\n');
-fprintf('========================================\n');
-
-% 找出预测错误的样本
-error_idx = find(Y_test_pred ~= Y_test);
-num_errors = length(error_idx);
-
-fprintf('错误样本数: %d / %d (%.2f%%)\n\n', num_errors, length(Y_test), ...
-        num_errors/length(Y_test)*100);
-
-if num_errors > 0
-    fprintf('样本编号\t真实类型\t预测类型\t特征向量\n');
-    fprintf('------------------------------------------------------------------------\n');
-    for i = 1:min(10, num_errors)  % 只显示前10个
-        idx = error_idx(i);
-        fprintf('%4d\t\ty%d\t\ty%d\t\t', idx, Y_test(idx), Y_test_pred(idx));
-        fprintf('[%.3f ', X_test_norm(idx, :));
-        fprintf(']\n');
-    end
-    if num_errors > 10
-        fprintf('... (还有 %d 个错误样本未显示)\n', num_errors - 10);
-    end
-end
-
-fprintf('\n========================================\n');
-
-%% ==================== 第十一部分：保存模型 ====================
-fprintf('步骤10: 保存模型...\n');
-
-% 保存完整模型
-save('BP_SVM_Model.mat', 'net', 'SVMModel', ...
-     'X_min', 'X_max', 'features_mean', 'features_std', ...
-     'train_accuracy', 'test_accuracy');
-
-fprintf('  模型已保存: BP_SVM_Model.mat\n\n');
-
-%% ==================== 第十二部分：模型使用示例 ====================
-fprintf('========================================\n');
-fprintf('模型使用示例\n');
-fprintf('========================================\n\n');
-
-fprintf('%% 加载模型\n');
-fprintf('load(''BP_SVM_Model.mat'');\n\n');
-
-fprintf('%% 对新样本进行预测\n');
-fprintf('new_sample = [0.85, 0.12, 0.08, 0.23, 0.15, 0.09];  %% 新的特征向量\n\n');
-
-fprintf('%% 1. 归一化\n');
-fprintf('new_sample_norm = (new_sample - X_min) ./ (X_max - X_min);\n\n');
-
-fprintf('%% 2. BP提取特征\n');
-fprintf('new_features = net(new_sample_norm'')'';\n\n');
-
-fprintf('%% 3. 特征标准化\n');
-fprintf('new_features_norm = (new_features - features_mean) ./ features_std;\n\n');
-
-fprintf('%% 4. SVM预测\n');
-fprintf('prediction = predict(SVMModel, new_features_norm);\n');
-fprintf('fprintf(''预测故障类型: y%%d\\n'', prediction);\n\n');
-
-% 实际演示
-fprintf('========================================\n');
-fprintf('实际预测演示（使用测试集第1个样本）\n');
-fprintf('========================================\n');
-demo_sample = X_test(1, :);
-demo_sample_norm = (demo_sample - X_min) ./ (X_max - X_min);
-demo_features = net(demo_sample_norm')';
-demo_features_norm = (demo_features - features_mean) ./ features_std;
-demo_prediction = predict(SVMModel, demo_features_norm);
-
-fprintf('输入特征: [%.3f, %.3f, %.3f, %.3f, %.3f, %.3f]\n', demo_sample);
-fprintf('真实类型: y%d\n', Y_test(1));
-fprintf('预测类型: y%d\n', demo_prediction);
-if demo_prediction == Y_test(1)
-    fprintf('预测结果: ✓ 正确\n');
-else
-    fprintf('预测结果: ✗ 错误\n');
-end
-
-fprintf('\n========================================\n');
-fprintf('BP-SVM故障诊断系统运行完成！\n');
-fprintf('========================================\n');
+% %% ==================== 第八部分：详细分类报告 ====================
+% fprintf('========================================\n');
+% fprintf('详细分类报告（测试集）\n');
+% fprintf('========================================\n\n');
+% 
+% % 计算混淆矩阵
+% C = confusionmat(Y_test, Y_test_pred);
+% 
+% % 计算每类的精确率、召回率、F1分数
+% num_classes = length(unique(Y_test));
+% precision = zeros(num_classes, 1);
+% recall = zeros(num_classes, 1);
+% f1_score = zeros(num_classes, 1);
+% 
+% for i = 1:num_classes
+%     TP = C(i, i);
+%     FP = sum(C(:, i)) - TP;
+%     FN = sum(C(i, :)) - TP;
+%     
+%     if (TP + FP) > 0
+%         precision(i) = TP / (TP + FP);
+%     else
+%         precision(i) = 0;
+%     end
+%     
+%     if (TP + FN) > 0
+%         recall(i) = TP / (TP + FN);
+%     else
+%         recall(i) = 0;
+%     end
+%     
+%     if (precision(i) + recall(i)) > 0
+%         f1_score(i) = 2 * precision(i) * recall(i) / (precision(i) + recall(i));
+%     else
+%         f1_score(i) = 0;
+%     end
+% end
+% 
+% % 打印每类的性能指标
+% fprintf('故障类型\t样本数\t精确率\t召回率\tF1分数\n');
+% fprintf('--------------------------------------------------------\n');
+% for i = 1:num_classes
+%     num_samples = sum(Y_test == i);
+%     fprintf('y%d\t\t%d\t%.3f\t%.3f\t%.3f\n', ...
+%         i, num_samples, precision(i), recall(i), f1_score(i));
+% end
+% fprintf('\n平均性能:\t\t%.3f\t%.3f\t%.3f\n\n', ...
+%     mean(precision), mean(recall), mean(f1_score));
+% 
+% %% ==================== 第九部分：可视化结果 ====================
+% fprintf('步骤9: 生成可视化结果...\n');
+% 
+% figure('Position', [100, 100, 1400, 900]);
+% 
+% % 1. 训练过程曲线
+% subplot(2, 3, 1);
+% plot(tr.epoch, tr.perf, 'b-', 'LineWidth', 2);
+% xlabel('训练轮次');
+% ylabel('均方误差');
+% title('BP网络训练过程');
+% grid on;
+% 
+% % 2. 混淆矩阵热图
+% subplot(2, 3, 2);
+% imagesc(C);
+% colorbar;
+% colormap('jet');
+% xlabel('预测类别');
+% ylabel('真实类别');
+% title('混淆矩阵（测试集）');
+% set(gca, 'XTick', 1:num_classes, 'YTick', 1:num_classes);
+% % 在格子中显示数值
+% for i = 1:num_classes
+%     for j = 1:num_classes
+%         text(j, i, num2str(C(i,j)), 'HorizontalAlignment', 'center', ...
+%              'Color', 'white', 'FontWeight', 'bold');
+%     end
+% end
+% 
+% % 3. 实际值 vs 预测值对比
+% subplot(2, 3, 3);
+% plot(1:length(Y_test), Y_test, 'bo-', 'LineWidth', 1.5, 'MarkerSize', 6);
+% hold on;
+% plot(1:length(Y_test), Y_test_pred, 'rx-', 'LineWidth', 1.5, 'MarkerSize', 8);
+% xlabel('测试样本编号');
+% ylabel('故障类型');
+% title('预测结果对比（测试集）');
+% legend('真实值', '预测值', 'Location', 'best');
+% grid on;
+% ylim([0, num_classes+1]);
+% 
+% % 4. 各类准确率柱状图
+% subplot(2, 3, 4);
+% class_accuracy = zeros(num_classes, 1);
+% for i = 1:num_classes
+%     class_idx = find(Y_test == i);
+%     if ~isempty(class_idx)
+%         class_accuracy(i) = sum(Y_test_pred(class_idx) == i) / length(class_idx) * 100;
+%     end
+% end
+% bar(class_accuracy, 'FaceColor', [0.3, 0.6, 0.8]);
+% xlabel('故障类型');
+% ylabel('准确率 (%)');
+% title('各类故障分类准确率');
+% set(gca, 'XTickLabel', arrayfun(@(x) sprintf('y%d', x), 1:num_classes, 'UniformOutput', false));
+% grid on;
+% ylim([0, 105]);
+% 
+% % 5. 特征空间可视化（PCA降维到2D）
+% subplot(2, 3, 5);
+% [~, score_test] = pca(features_test_norm);
+% gscatter(score_test(:,1), score_test(:,2), Y_test, [], 'o', 8);
+% xlabel('第一主成分');
+% ylabel('第二主成分');
+% title('提取特征的PCA可视化（测试集）');
+% legend('Location', 'bestoutside');
+% grid on;
+% 
+% % 6. ROC曲线（针对二分类问题，这里展示宏平均）
+% subplot(2, 3, 6);
+% % 计算每一类的预测概率
+% [~, scores] = predict(SVMModel, features_test_norm);
+% 
+% % 绘制多条ROC曲线
+% hold on;
+% colors = lines(num_classes);
+% for i = 1:num_classes
+%     % 将多分类转为二分类
+%     true_binary = (Y_test == i);
+%     pred_scores = scores(:, i);
+%     
+%     % 计算ROC
+%     [X_roc, Y_roc, ~, AUC] = perfcurve(true_binary, pred_scores, true);
+%     plot(X_roc, Y_roc, 'Color', colors(i,:), 'LineWidth', 1.5, ...
+%          'DisplayName', sprintf('y%d (AUC=%.3f)', i, AUC));
+% end
+% plot([0, 1], [0, 1], 'k--', 'LineWidth', 1);
+% xlabel('假阳率');
+% ylabel('真阳率');
+% title('ROC曲线（各类故障）');
+% legend('Location', 'southeast', 'FontSize', 7);
+% grid on;
+% 
+% % 保存图形
+% saveas(gcf, 'BP_SVM_Results.png');
+% fprintf('  可视化图表已保存: BP_SVM_Results.png\n\n');
+% 
+% %% ==================== 第十部分：错误样本分析 ====================
+% fprintf('========================================\n');
+% fprintf('错误样本分析\n');
+% fprintf('========================================\n');
+% 
+% % 找出预测错误的样本
+% error_idx = find(Y_test_pred ~= Y_test);
+% num_errors = length(error_idx);
+% 
+% fprintf('错误样本数: %d / %d (%.2f%%)\n\n', num_errors, length(Y_test), ...
+%         num_errors/length(Y_test)*100);
+% 
+% if num_errors > 0
+%     fprintf('样本编号\t真实类型\t预测类型\t特征向量\n');
+%     fprintf('------------------------------------------------------------------------\n');
+%     for i = 1:min(10, num_errors)  % 只显示前10个
+%         idx = error_idx(i);
+%         fprintf('%4d\t\ty%d\t\ty%d\t\t', idx, Y_test(idx), Y_test_pred(idx));
+%         fprintf('[%.3f ', X_test_norm(idx, :));
+%         fprintf(']\n');
+%     end
+%     if num_errors > 10
+%         fprintf('... (还有 %d 个错误样本未显示)\n', num_errors - 10);
+%     end
+% end
+% 
+% fprintf('\n========================================\n');
+% 
+% %% ==================== 第十一部分：保存模型 ====================
+% fprintf('步骤10: 保存模型...\n');
+% 
+% % 保存完整模型
+% save('BP_SVM_Model.mat', 'net', 'SVMModel', ...
+%      'X_min', 'X_max', 'features_mean', 'features_std', ...
+%      'train_accuracy', 'test_accuracy');
+% 
+% fprintf('  模型已保存: BP_SVM_Model.mat\n\n');
+% 
+% %% ==================== 第十二部分：模型使用示例 ====================
+% fprintf('========================================\n');
+% fprintf('模型使用示例\n');
+% fprintf('========================================\n\n');
+% 
+% fprintf('%% 加载模型\n');
+% fprintf('load(''BP_SVM_Model.mat'');\n\n');
+% 
+% fprintf('%% 对新样本进行预测\n');
+% fprintf('new_sample = [0.85, 0.12, 0.08, 0.23, 0.15, 0.09];  %% 新的特征向量\n\n');
+% 
+% fprintf('%% 1. 归一化\n');
+% fprintf('new_sample_norm = (new_sample - X_min) ./ (X_max - X_min);\n\n');
+% 
+% fprintf('%% 2. BP提取特征\n');
+% fprintf('new_features = net(new_sample_norm'')'';\n\n');
+% 
+% fprintf('%% 3. 特征标准化\n');
+% fprintf('new_features_norm = (new_features - features_mean) ./ features_std;\n\n');
+% 
+% fprintf('%% 4. SVM预测\n');
+% fprintf('prediction = predict(SVMModel, new_features_norm);\n');
+% fprintf('fprintf(''预测故障类型: y%%d\\n'', prediction);\n\n');
+% 
+% % 实际演示
+% fprintf('========================================\n');
+% fprintf('实际预测演示（使用测试集第1个样本）\n');
+% fprintf('========================================\n');
+% demo_sample = X_test(1, :);
+% demo_sample_norm = (demo_sample - X_min) ./ (X_max - X_min);
+% demo_features = net(demo_sample_norm')';
+% demo_features_norm = (demo_features - features_mean) ./ features_std;
+% demo_prediction = predict(SVMModel, demo_features_norm);
+% 
+% fprintf('输入特征: [%.3f, %.3f, %.3f, %.3f, %.3f, %.3f]\n', demo_sample);
+% fprintf('真实类型: y%d\n', Y_test(1));
+% fprintf('预测类型: y%d\n', demo_prediction);
+% if demo_prediction == Y_test(1)
+%     fprintf('预测结果: ✓ 正确\n');
+% else
+%     fprintf('预测结果: ✗ 错误\n');
+% end
+% 
+% fprintf('\n========================================\n');
+% fprintf('BP-SVM故障诊断系统运行完成！\n');
+% fprintf('========================================\n');

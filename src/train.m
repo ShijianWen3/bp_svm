@@ -48,8 +48,8 @@ fprintf('步骤3: 构建BP神经网络...\n');
 
 % BP网络参数设置
 input_size = 6;      % 输入层：6个特征
-hidden_size = 6;    % 隐藏层：15个神经元
-output_size = 6;    % 输出层：10维特征向量（用于SVM输入）
+hidden_size = 12;    % 隐藏层：15个神经元
+output_size = 6;    % 输出层：6维特征向量（用于SVM输入）
 
 % 创建BP神经网络
 net = feedforwardnet(hidden_size, 'trainlm');
@@ -115,34 +115,68 @@ features_mean = mean(features_train, 1);
 features_std = std(features_train, 0, 1);
 features_std(features_std == 0) = 1;  % 避免除零
 
+t_features_mean= mean(features_test, 1);
+t_features_std = std(features_test, 0, 1);
+t_features_std(t_features_std == 0) = 1;  % 避免除零
+
 features_train_norm = (features_train - features_mean) ./ features_std;
 features_test_norm = (features_test - features_mean) ./ features_std;
+
+% features_test_norm = (features_test - t_features_mean) ./ t_features_std;
 
 fprintf('  特征标准化完成\n\n');
 
 %% ==================== 第六部分：SVM分类器训练 ====================
-fprintf('步骤7: 训练SVM分类器...\n');
+% fprintf('步骤7: 训练SVM分类器...\n');
+% 
+% % 使用fitcecoc进行多分类（一对一策略）
+% % 参数优化
+% fprintf('  正在进行超参数优化...\n');
+% 
+% % SVM参数设置
+% template = templateSVM(...
+%     'KernelFunction', 'rbf', ...      % RBF核函数
+%     'KernelScale', 'auto', ...         % 自动设置核尺度
+%     'BoxConstraint', 1, ...            % 惩罚因子C=1
+%     'Standardize', false);             % 已经标准化过了
+% 
+% % 训练多分类SVM
+% tic;
+% SVMModel = fitcecoc(features_train_norm, Y_train, ...
+%     'Learners', template, ...
+%     'Coding', 'onevsone', ...          % 一对一编码
+%     'Prior', 'uniform');               % 均匀先验
+% svm_training_time = toc;
+% 
+% fprintf('  SVM训练完成！用时: %.2f 秒\n\n', svm_training_time);
 
-% 使用fitcecoc进行多分类（一对一策略）
-% 参数优化
-fprintf('  正在进行超参数优化...\n');
 
-% SVM参数设置
-template = templateSVM(...
-    'KernelFunction', 'rbf', ...      % RBF核函数
-    'KernelScale', 'auto', ...         % 自动设置核尺度
-    'BoxConstraint', 1, ...            % 惩罚因子C=1
-    'Standardize', false);             % 已经标准化过了
+fprintf('步骤7: 训练SVM分类器（超参数优化）...\n');
 
-% 训练多分类SVM
+% 定义参数搜索空间
+params = struct(...
+    'BoxConstraint', [0.1, 1, 10, 100], ...  % C参数
+    'KernelScale', [0.1, 1, 10, 'auto']);    % gamma参数
+
+% 使用交叉验证寻找最优参数
+template = templateSVM('KernelFunction', 'rbf', 'Standardize', false);
+
 tic;
 SVMModel = fitcecoc(features_train_norm, Y_train, ...
     'Learners', template, ...
-    'Coding', 'onevsone', ...          % 一对一编码
-    'Prior', 'uniform');               % 均匀先验
+    'Coding', 'onevsone', ...
+    'OptimizeHyperparameters', {'BoxConstraint', 'KernelScale'}, ...
+    'HyperparameterOptimizationOptions', struct(...
+        'AcquisitionFunctionName', 'expected-improvement-plus', ...
+        'MaxObjectiveEvaluations', 30, ...  % 尝试30组参数
+        'ShowPlots', false, ...
+        'Verbose', 1));
 svm_training_time = toc;
 
 fprintf('  SVM训练完成！用时: %.2f 秒\n\n', svm_training_time);
+
+
+
 
 %% ==================== 第七部分：模型测试与评估 ====================
 fprintf('步骤8: 模型测试与评估...\n\n');
